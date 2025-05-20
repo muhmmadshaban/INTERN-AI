@@ -27,15 +27,11 @@ def extract_text_from_pdf(pdf_file):
     for page in reader.pages:
         text += page.extract_text() or ""
     return text
-
-def chat(resume_text:str):
-    # PATH = "MUHMMAD SHABAN RESUME (1).pdf"
-    # resume_pdf_path = PATH
-    # resume_text = extract_text_from_pdf(resume_pdf_path)
+def chat(resume_text: str):
     print("Extracted Resume Text:")
     print(resume_text[:500])  # Preview for verification
 
-    # Agent to find relevant startups and local companies
+    # Agent to find startups and local companies
     startup_finder = Agent(
         model=Groq(id="llama3-70b-8192"),
         tools=[DuckDuckGo(), GoogleSearch()],
@@ -43,16 +39,17 @@ def chat(resume_text:str):
         show_tool_calls=True,
         markdown=True,
         instructions=[
-            "Extract skills and tools from the resume.",
+            "Extract technical skills, tools, and domains from the resume.",
             "Find startups and local (non-MNC) companies working in those areas.",
-            "Prioritize those offering internships or hiring interns.",
-            "Exclude MNCs or large multinational corporations.",
-            "Return table: Company Name, Tech Stack, Website, Location, Internship Info or Careers Page Link.",
+            "Only include companies currently active and found via real sources like websites, news, or search results.",
+            "Do not list any company unless their official website or legitimate presence is verified via DuckDuckGo or Google.",
+            "Exclude MNCs and vague or unverifiable organizations.",
+            "Return these verified companies with basic info: Company Name, Tech Area, Website, Location.",
         ],
         debug_mode=True
     )
 
-    # Agent to fetch contact info like HR emails or recruiter profiles
+    # Agent to find real HR/recruiter contacts
     contact_finder = Agent(
         model=Groq(id="llama3-70b-8192"),
         tools=[GoogleSearch()],
@@ -60,49 +57,45 @@ def chat(resume_text:str):
         show_tool_calls=True,
         markdown=True,
         instructions=[
-            "Find HR, recruiter, or internship coordinator contacts for given companies.",
-            "Include email, LinkedIn profile, or careers page.",
-            "Only include contacts from startups or local companies.",
-            "Ignore generic company support emails or unrelated contact pages.",
-            "Output: Company Name, HR Name (if available), Email, LinkedIn, Source Link.",
+            "For each verified startup or local company, search for HR or recruiter contacts using Google.",
+            "Only include contact if you find one of the following from real sources: company HR email, recruiter LinkedIn profile, or official careers/contact page.",
+            "Do NOT make up contact names or emails. Use only what is found via real search results.",
+            "Ignore generic support emails, sales contacts, or general inquiries.",
+            "Return only companies for which valid contact details are found.",
+            "Format: Company Name, HR Name (if available), Email, LinkedIn, Source Link.",
         ],
         debug_mode=True
     )
 
-    # Leader agent to coordinate everything
+    # Leader agent to coordinate
     leader_agent = Agent(
         model=Groq(id="llama3-70b-8192"),
-        role="Startup Internship Research Leader",
+        role="Verified Startup Internship Finder",
         show_tool_calls=True,
         markdown=True,
         team=[startup_finder, contact_finder],
         instructions=[
-            "1. Extract skills from the resume.",
-            "2. Use that to find relevant startups or local companies working in those areas.",
-            "3. Ensure the companies are not MNCs, only local or early-stage companies.",
-            "4. Find HR/recruiter contacts for each company.",
-            "5. Combine everything in a structured table: Company Name, Tech Area, Website, Location, Internship Info, HR Email/LinkedIn, Source.",
+            "1. Extract skills/domains from the resume.",
+            "2. Use startup_finder to find real startups and local companies in those areas, using real sources (Google, DuckDuckGo).",
+            "3. Pass only verified companies to contact_finder.",
+            "4. Use contact_finder to find verified HR/recruiter/careers contacts via Google search.",
+            "5. Exclude companies if no contact info is found.",
+            "6. Return final result as table only for companies with verified contact info.",
+            "Table Columns: Company Name | Tech Area | Website | Location | Internship Info / Careers Page | HR Email / LinkedIn | Source",
         ],
         debug_mode=True
     )
 
-    # Leader agent prompt
     prompt = (
-    "Given the following resume, perform the following tasks:\n"
-    "1. Extract relevant tools, programming languages, and domains of interest.\n"
-    "2. Identify startups and local companies (preferably from the same country mentioned in the resume; avoid MNCs) that are working in the extracted domains and offering internships.\n"
-    "3. must Find HR or recruiter contact emails, LinkedIn profiles, or official contact pages for those companies.\n\n"
-    f"{resume_text}\n\n"
-    "Provide the output in the form of a structured table with the following columns:\n"
-    "Company Name | Tech Stack / Area | Website | Location | Internship Info / Careers Page | HR Email / LinkedIn | Source"
-)
+        "Given the resume below, extract technical skills and domains. "
+        "Then find only verified startups or local companies (not MNCs) working in those areas. "
+        "Use real-time data via DuckDuckGo or Google to ensure authenticity. "
+        "Find only companies that have verifiable HR contacts or careers page — no assumptions or guesses allowed.\n\n"
+        f"{resume_text}\n\n"
+        "Return only companies with contact details. Format:\n"
+        "Company Name | Tech Stack / Area | Website | Location | Internship Info / Careers Page | HR Email / LinkedIn | Source"
+    )
 
-
-    # Run the workflow
-
-    print("\n🔍 Startup & Local Internship Opportunities:\n")
-    response =  leader_agent.run(prompt)
+    print("\n🔍 Fetching Verified Internship Opportunities...\n")
+    response = leader_agent.run(prompt)
     return response
-    # leader_agent.print_response(prompt)
-
-# chat()

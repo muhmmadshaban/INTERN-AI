@@ -7,78 +7,79 @@ from agent_team import extract_text_from_pdf
 st.markdown(
     """
     <style>
-    /* Set full page background */
     body {
-        background-color: #e6f0fa;  /* a soft, calm light blue */
-        color: #333333;             /* dark gray text for good readability */
+        background-color: #e6f0fa;
+        color: #333333;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     .main > div {
-        background-color: #ffffff;  /* crisp white content background */
+        background-color: #ffffff;
         padding: 2rem;
         border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* subtle shadow for depth */
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
 def extract_markdown_from_response(response_str):
-    # Extract text inside content="..." before content_type=
+    """
+    Extracts content="..." portion before content_type=.
+    """
     match = re.search(r'content="(.*?)"\scontent_type=', response_str, re.DOTALL)
     if match:
         markdown_text = match.group(1)
-        # Unescape newlines and other escaped characters
         markdown_text = markdown_text.encode('utf-8').decode('unicode_escape')
         return markdown_text
     else:
-        # fallback: if pattern not matched, return raw response_str
         return response_str
-    
 
+def extract_markdown_table(markdown_text):
+    """
+    Extracts the markdown table (lines starting with '|').
+    """
+    lines = markdown_text.splitlines()
+    table_lines = [line for line in lines if line.strip().startswith('|')]
+    if len(table_lines) >= 2:
+        return "\n".join(table_lines)
+    else:
+        return "⚠️ No company table found."
 
-API_ENDPOINT = "http://127.0.0.1:8000/chat"  # Ensure this matches your FastAPI endpoint
+API_ENDPOINT = "http://127.0.0.1:8000/chat"
 
 st.title("🤖 AGENT_INTERN")
-st.write(
-    "Upload your resume and let our AI agents find relevant startups and local companies for internships. ")
-resume = st.file_uploader("Upload Your Resume", type=["pdf"])  # Restrict to PDF files
+st.write("Upload your resume and let our AI agents find relevant startups and local companies for internships.")
+
+resume = st.file_uploader("Upload Your Resume", type=["pdf"])
 
 if resume is not None:
-    # Extract text from the uploaded PDF resume
-    text = extract_text_from_pdf(resume)
-    message = text  # Use the extracted text as the message
-    st.write(message)
+    # Step 1: Extract text from uploaded resume
+    extracted_text = extract_text_from_pdf(resume)
+    st.subheader("📄 Resume Preview")
+    st.text(extracted_text)
+
+    # Step 2: Trigger on Send button
     if st.button("Send"):
-        if message:
-            with st.spinner("Waiting for response..."):
+        if extracted_text.strip():
+            with st.spinner("🔍 Analyzing and matching companies..."):
                 try:
-                    response = requests.post(API_ENDPOINT, json={"message": message})
+                    response = requests.post(API_ENDPOINT, json={"message": extracted_text})
                     if response.status_code == 200:
                         data = response.json()
-                        raw_response = data.get("")  # Adjusted to match your API response key
-                        markdown_content = extract_markdown_from_response(raw_response)
+                        raw_response = data.get("response", "")
+                        markdown_full = extract_markdown_from_response(raw_response)
+                        company_table = extract_markdown_table(markdown_full)
 
-                        # Show the cleaned markdown content
-                        st.markdown(markdown_content, unsafe_allow_html=True)
-
+                        st.subheader("🏢 Matched Companies")
+                        st.markdown(company_table, unsafe_allow_html=True)
+                    elif response.status_code == 500:
+                        st.error("Internal server error. Try again later.")
                     else:
                         st.error(f"Error {response.status_code}: {response.text}")
                 except Exception as e:
-                    st.error(f"Request failed: {e}")
+                    st.error(f"❌ Request failed: {e}")
         else:
-            st.warning("No text extracted from the resume.")
+            st.warning("⚠️ No valid text found in the resume.")
 else:
-    st.warning("Please upload a resume to proceed.")
-
-def extract_markdown_from_response(response_str):
-    # Extract text inside content="..." before content_type=
-    match = re.search(r'content="(.*?)"\scontent_type=', response_str, re.DOTALL)
-    if match:
-        markdown_text = match.group(1)
-        # Unescape newlines and other escaped characters
-        markdown_text = markdown_text.encode('utf-8').decode('unicode_escape')
-        return markdown_text
-    else:
-        # fallback: if pattern not matched, return raw response_str
-        return response_str
+    st.info("📤 Please upload a PDF resume to begin.")
